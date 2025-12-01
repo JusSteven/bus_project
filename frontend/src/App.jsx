@@ -3,6 +3,10 @@ import { Plus, Trash2, Clock, MapPin, Users, MessageCircle, X, CheckCircle, Navi
 import './App.css';
 
 export default function BusDriverApp() {
+  // API URL - uses environment variable for production
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+  // State Management
   const [activeTab, setActiveTab] = useState('schedules');
   const [drivers, setDrivers] = useState([]);
   const [schedules, setSchedules] = useState([]);
@@ -35,7 +39,7 @@ export default function BusDriverApp() {
     'Murang\'a Road',
   ];
 
-  // Hardcoded schedules
+  // Hardcoded schedules - Initial data
   const hardcodedSchedules = [
     { id: 'sched-001', driverId: 'driver-001', driverName: 'John Mbugua', busNumber: 'KCC 456', stage: 'Nairobi Central', departureTime: '06:00', phone: '+254712345678', route: 'Nairobi - Thika' },
     { id: 'sched-002', driverId: 'driver-002', driverName: 'Peter Kariuki', busNumber: 'KCA 789', stage: 'Roysambu', departureTime: '07:30', phone: '+254723456789', route: 'Nairobi - Thika' },
@@ -44,36 +48,48 @@ export default function BusDriverApp() {
     { id: 'sched-005', driverId: 'driver-005', driverName: 'James Ochieng', busNumber: 'KCC 567', stage: 'Thika Town', departureTime: '10:30', phone: '+254756789012', route: 'Nairobi - Thika' },
   ];
 
+  // Initialize App - Load data from backend
   useEffect(() => {
     loadDrivers();
     setSchedules(hardcodedSchedules);
     loadBookings();
   }, []);
 
+  // ========================= API CALLS =========================
+
+  /**
+   * Load all registered drivers from backend
+   */
   const loadDrivers = async () => {
     try {
-      const response = await fetch('http://localhost:3001/drivers');
+      const response = await fetch(`${API_URL}/drivers`);
       if (response.ok) {
         const data = await response.json();
         setDrivers(data);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error loading drivers:', error);
     }
   };
 
+  /**
+   * Load all bookings from backend
+   */
   const loadBookings = async () => {
     try {
-      const response = await fetch('http://localhost:3001/bookings');
+      const response = await fetch(`${API_URL}/bookings`);
       if (response.ok) {
         const data = await response.json();
         setBookings(data);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error loading bookings:', error);
     }
   };
 
+  /**
+   * Register a new driver
+   */
   const handleRegisterDriver = async () => {
     if (!formData.name || !formData.phone || !formData.route || !formData.busNumber) {
       alert('Please fill all fields');
@@ -81,7 +97,7 @@ export default function BusDriverApp() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/register-driver', {
+      const response = await fetch(`${API_URL}/register-driver`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -113,6 +129,9 @@ export default function BusDriverApp() {
     }
   };
 
+  /**
+   * Open driver management modal
+   */
   const openDriverManagement = (driverId) => {
     const driver = schedules.find(s => s.driverId === driverId);
     setSelectedDriver(driver);
@@ -120,6 +139,9 @@ export default function BusDriverApp() {
     setDriverLoginModal(true);
   };
 
+  /**
+   * Update driver location and departure time
+   */
   const handleDriverUpdate = async () => {
     if (!driverUpdateForm.currentLocation || !driverUpdateForm.departureTime) {
       alert('Please fill all fields');
@@ -127,7 +149,7 @@ export default function BusDriverApp() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/update-driver-status', {
+      const response = await fetch(`${API_URL}/update-driver-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -159,6 +181,9 @@ export default function BusDriverApp() {
     }
   };
 
+  /**
+   * Create a new booking
+   */
   const handleCreateBooking = async () => {
     if (!passengerName || !seatNumber) {
       alert('Please fill all fields');
@@ -166,7 +191,7 @@ export default function BusDriverApp() {
     }
 
     try {
-      const response = await fetch('http://localhost:3001/create-booking', {
+      const response = await fetch(`${API_URL}/create-booking`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -199,25 +224,12 @@ export default function BusDriverApp() {
     }
   };
 
-  const handleDeleteSchedule = async (scheduleId) => {
-    try {
-      const response = await fetch(`http://localhost:3001/delete-schedule/${scheduleId}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        setSchedules(schedules.filter(s => s.id !== scheduleId));
-        alert('Schedule deleted successfully!');
-      }
-    } catch (error) {
-      console.error('Error deleting schedule:', error);
-      alert('Error deleting schedule');
-    }
-  };
-
+  /**
+   * Cancel a booking
+   */
   const handleCancelBooking = async (bookingId) => {
     try {
-      const response = await fetch(`http://localhost:3001/delete-booking/${bookingId}`, { method: 'DELETE' });
+      const response = await fetch(`${API_URL}/delete-booking/${bookingId}`, { method: 'DELETE' });
       if (response.ok) {
         setBookings(bookings.filter(b => b.id !== bookingId));
         alert('Booking cancelled!');
@@ -228,11 +240,17 @@ export default function BusDriverApp() {
     }
   };
 
+  /**
+   * Open booking modal for a schedule
+   */
   const openBookingModal = (schedule) => {
     setSelectedSchedule(schedule);
     setBookingModal(true);
   };
 
+  /**
+   * Open WhatsApp with pre-filled message
+   */
   const handleBookScheduleWhatsApp = (schedule) => {
     const message = `Hi, I would like to book a seat on the bus departing from ${schedule.stage} at ${schedule.departureTime}. Bus number: ${schedule.busNumber}`;
     const encodedMessage = encodeURIComponent(message);
@@ -240,15 +258,21 @@ export default function BusDriverApp() {
     window.open(whatsappUrl, '_blank');
   };
 
+  // ========================= JSX RENDER =========================
+
   return (
     <div className="app-container">
       <div className="mobile-phone">
+        {/* Header */}
         <div className="header">
           <h1>Bus Booking</h1>
           <p>Thika Superhighway Routes</p>
         </div>
 
+        {/* Main Content */}
         <div className="content">
+
+          {/* ========== SCHEDULES TAB ========== */}
           {activeTab === 'schedules' && (
             <div className="tab-content">
               <div className="section-header">
@@ -280,6 +304,7 @@ export default function BusDriverApp() {
             </div>
           )}
 
+          {/* ========== BOOKINGS TAB ========== */}
           {activeTab === 'bookings' && (
             <div className="tab-content">
               <div className="section-header">
@@ -313,6 +338,7 @@ export default function BusDriverApp() {
             </div>
           )}
 
+          {/* ========== DRIVER MANAGEMENT TAB ========== */}
           {activeTab === 'driver-manage' && (
             <div className="tab-content">
               <div className="section-header">
@@ -320,6 +346,7 @@ export default function BusDriverApp() {
                 <p>Update location & departure time</p>
               </div>
 
+              {/* Active Drivers Section */}
               <div className="driver-list">
                 <h3>Active Drivers</h3>
                 {schedules.length === 0 ? (
@@ -341,6 +368,7 @@ export default function BusDriverApp() {
                 )}
               </div>
 
+              {/* Registered Drivers Section */}
               <div className="driver-list">
                 <h3>Registered Drivers</h3>
                 {drivers.length === 0 ? (
@@ -376,6 +404,7 @@ export default function BusDriverApp() {
             </div>
           )}
 
+          {/* ========== REGISTER TAB ========== */}
           {activeTab === 'register' && (
             <div className="tab-content">
               <div className="section-header">
@@ -396,6 +425,7 @@ export default function BusDriverApp() {
           )}
         </div>
 
+        {/* ========== BOOKING MODAL ========== */}
         {bookingModal && (
           <div className="modal">
             <div className="modal-content">
@@ -420,6 +450,7 @@ export default function BusDriverApp() {
           </div>
         )}
 
+        {/* ========== DRIVER UPDATE MODAL ========== */}
         {driverLoginModal && (
           <div className="modal">
             <div className="modal-content">
@@ -449,6 +480,7 @@ export default function BusDriverApp() {
           </div>
         )}
 
+        {/* ========== BOTTOM NAVIGATION ========== */}
         <div className="bottom-nav">
           <button onClick={() => setActiveTab('schedules')} className={`nav-btn ${activeTab === 'schedules' ? 'active' : ''}`}><Clock size={18} /> Schedules</button>
           <button onClick={() => setActiveTab('bookings')} className={`nav-btn ${activeTab === 'bookings' ? 'active' : ''}`}><CheckCircle size={18} /> Bookings {bookings.length > 0 && <span className="badge">{bookings.length}</span>}</button>
