@@ -1,30 +1,37 @@
-import express from 'express';
-import cors from 'cors';
-import { createClient } from 'redis';
-import { v4 as uuidv4 } from 'uuid';
+const express = require('express');
+const cors = require('cors');
+const redis = require('redis');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Redis client setup
-const redisClient = createClient({
-  host: 'localhost',
-  port: 6379,
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
 });
 
-redisClient.on('error', (err) => console.log('Redis error:', err));
+redisClient.on('error', (err) => {
+  console.log('Redis error:', err);
+});
 
-// Connect to Redis
-await redisClient.connect();
-console.log('Redis connected successfully');
+redisClient.on('connect', () => {
+  console.log('Redis connected successfully');
+});
 
-// Routes
+redisClient.on('ready', () => {
+  console.log('Redis is ready');
+});
 
-// Register a new driver
+(async () => {
+  await redisClient.connect();
+})();
+
+// ==================== REGISTER DRIVER ====================
 app.post('/register-driver', async (req, res) => {
   try {
     const { name, phone, route, busNumber } = req.body;
@@ -41,7 +48,7 @@ app.post('/register-driver', async (req, res) => {
       route,
       busNumber,
       currentLocation: 'Nairobi Central',
-      departureTime: '00:00',
+      departureTime: '08:00',
       status: 'active',
       createdAt: new Date().toISOString(),
     };
@@ -58,7 +65,7 @@ app.post('/register-driver', async (req, res) => {
   }
 });
 
-// Get all drivers
+// ==================== GET ALL DRIVERS ====================
 app.get('/drivers', async (req, res) => {
   try {
     const driverIds = await redisClient.lRange('drivers', 0, -1);
@@ -78,7 +85,7 @@ app.get('/drivers', async (req, res) => {
   }
 });
 
-// Update driver status (location and departure time)
+// ==================== UPDATE DRIVER STATUS ====================
 app.post('/update-driver-status', async (req, res) => {
   try {
     const { driverId, driverName, busNumber, currentLocation, departureTime, route, phone } = req.body;
@@ -111,7 +118,7 @@ app.post('/update-driver-status', async (req, res) => {
   }
 });
 
-// Get driver status
+// ==================== GET DRIVER STATUS ====================
 app.get('/driver-status/:driverId', async (req, res) => {
   try {
     const { driverId } = req.params;
@@ -128,7 +135,7 @@ app.get('/driver-status/:driverId', async (req, res) => {
   }
 });
 
-// Add schedule
+// ==================== ADD SCHEDULE ====================
 app.post('/add-schedule', async (req, res) => {
   try {
     const { driverId, stage, departureTime } = req.body;
@@ -160,7 +167,7 @@ app.post('/add-schedule', async (req, res) => {
   }
 });
 
-// Get all schedules
+// ==================== GET ALL SCHEDULES ====================
 app.get('/schedules', async (req, res) => {
   try {
     const scheduleIds = await redisClient.lRange('schedules', 0, -1);
@@ -180,7 +187,7 @@ app.get('/schedules', async (req, res) => {
   }
 });
 
-// Create booking
+// ==================== CREATE BOOKING ====================
 app.post('/create-booking', async (req, res) => {
   try {
     const {
@@ -232,7 +239,7 @@ app.post('/create-booking', async (req, res) => {
   }
 });
 
-// Get all bookings
+// ==================== GET ALL BOOKINGS ====================
 app.get('/bookings', async (req, res) => {
   try {
     const bookingIds = await redisClient.lRange('bookings', 0, -1);
@@ -252,7 +259,7 @@ app.get('/bookings', async (req, res) => {
   }
 });
 
-// Delete booking
+// ==================== DELETE BOOKING ====================
 app.delete('/delete-booking/:bookingId', async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -274,7 +281,29 @@ app.delete('/delete-booking/:bookingId', async (req, res) => {
   }
 });
 
-// Delete driver
+// ==================== DELETE SCHEDULE ====================
+app.delete('/delete-schedule/:scheduleId', async (req, res) => {
+  try {
+    const { scheduleId } = req.params;
+    const schedule = await redisClient.hGetAll(`schedule:${scheduleId}`);
+
+    // Delete schedule
+    await redisClient.del(`schedule:${scheduleId}`);
+    // Remove from schedules list
+    await redisClient.lRem('schedules', 0, scheduleId);
+    // Remove from driver's schedules
+    if (schedule.driverId) {
+      await redisClient.lRem(`driver:${schedule.driverId}:schedules`, 0, scheduleId);
+    }
+
+    res.json({ message: 'Schedule deleted' });
+  } catch (error) {
+    console.error('Error deleting schedule:', error);
+    res.status(500).json({ error: 'Error deleting schedule' });
+  }
+});
+
+// ==================== DELETE DRIVER ====================
 app.delete('/delete-driver/:driverId', async (req, res) => {
   try {
     const { driverId } = req.params;
@@ -300,29 +329,18 @@ app.delete('/delete-driver/:driverId', async (req, res) => {
   }
 });
 
-// Delete schedule
-app.delete('/delete-schedule/:scheduleId', async (req, res) => {
-  try {
-    const { scheduleId } = req.params;
-    const schedule = await redisClient.hGetAll(`schedule:${scheduleId}`);
-
-    // Delete schedule
-    await redisClient.del(`schedule:${scheduleId}`);
-    // Remove from schedules list
-    await redisClient.lRem('schedules', 0, scheduleId);
-    // Remove from driver's schedules
-    if (schedule.driverId) {
-      await redisClient.lRem(`driver:${schedule.driverId}:schedules`, 0, scheduleId);
-    }
-
-    res.json({ message: 'Schedule deleted' });
-  } catch (error) {
-    console.error('Error deleting schedule:', error);
-    res.status(500).json({ error: 'Error deleting schedule' });
-  }
+// ==================== HEALTH CHECK ====================
+app.get('/health', (req, res) => {
+  res.json({ status: 'Server is running', timestamp: new Date().toISOString() });
 });
 
-// Start server
+// ==================== START SERVER ====================
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`========================================`);
+  console.log(`Bus App Backend Server`);
+  console.log(`========================================`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Redis URL: ${process.env.REDIS_URL ? 'Connected' : 'Local'}`);
+  console.log(`========================================`);
 });
